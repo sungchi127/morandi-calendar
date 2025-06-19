@@ -154,3 +154,6 @@ cloudinary-config*
 uploads/
 temp-uploads/
 *.tmp
+
+PROJECT_STATUS.md
+QUICK_START.md
