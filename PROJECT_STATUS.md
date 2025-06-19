@@ -325,8 +325,8 @@ cd ../client && npm install
 # 後端 .env
 NODE_ENV=development
 PORT=5000
-MONGODB_URI=mongodb+srv://sung891220:VsMB4FghpGirjXfW@calender.qzfma0x.mongodb.net/morandi-calendar?retryWrites=true&w=majority&appName=Calender
-JWT_SECRET=morandi-calendar-super-secret-key-2024
+MONGODB_URI=mongodb+srv://your-username:your-password@your-cluster.mongodb.net/your-database?retryWrites=true&w=majority
+JWT_SECRET=your-super-secret-jwt-key-here
 CLIENT_URL=http://172.20.213.111:3000
 
 # 前端 .env  
