@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Event Update</title>
+</head>
+<body>
+    <h1>調試事件更新</h1>
+    <button onclick="testUpdate()">測試更新事件</button>
+    <div id="result"></div>
+
+    <script>
+        async function testUpdate() {
+            try {
+                // 登入獲取token
+                const loginResponse = await fetch('http://172.20.213.111:5000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'test2@example.com',
+                        password: '123456'
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                const token = loginData.data.token;
+                console.log('獲取token:', token.substring(0, 20) + '...');
+
+                // 創建測試事件
+                const createResponse = await fetch('http://172.20.213.111:5000/api/events', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: '測試更新事件',
+                        description: '用於測試更新',
+                        startDate: '2025-07-20T09:00:00.000Z',
+                        endDate: '2025-07-20T10:00:00.000Z',
+                        isAllDay: false,
+                        color: 'morandi-sage',
+                        category: 'personal',
+                        location: '測試地點',
+                        privacy: 'private',
+                        reminders: []
+                    })
+                });
+                
+                const createData = await createResponse.json();
+                const eventId = createData.data.event._id;
+                console.log('創建事件ID:', eventId);
+
+                // 模擬前端發送包含startTime的更新請求
+                const updateResponse = await fetch(`http://172.20.213.111:5000/api/events/${eventId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: '更新的事件',
+                        description: '更新的描述',
+                        startDate: '2025-07-21T14:00:00.000Z',
+                        endDate: '2025-07-21T15:00:00.000Z',
+                        startTime: '14:00',  // 這會導致錯誤
+                        endTime: '15:00',
+                        isAllDay: false,
+                        color: 'morandi-rose',
+                        category: 'work',
+                        location: '新地點',
+                        privacy: 'private',
+                        reminders: []
+                    })
+                });
+                
+                const updateData = await updateResponse.json();
+                console.log('更新結果:', updateData);
+                
+                document.getElementById('result').innerHTML = `
+                    <h3>測試結果:</h3>
+                    <p>創建事件: ${createData.success ? '成功' : '失敗'}</p>
+                    <p>更新事件: ${updateData.success ? '成功' : '失敗'}</p>
+                    <p>錯誤信息: ${updateData.message || '無'}</p>
+                    <pre>${JSON.stringify(updateData, null, 2)}</pre>
+                `;
+
+                // 清理測試數據
+                await fetch(`http://172.20.213.111:5000/api/events/${eventId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+            } catch (error) {
+                console.error('測試錯誤:', error);
+                document.getElementById('result').innerHTML = `錯誤: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
