@@ -4,15 +4,24 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // 忽略 TypeScript 相關的警告
+        if (warning.code === 'UNRESOLVED_IMPORT') return
+        warn(warning)
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
-    host: '172.20.213.111',
+    host: '0.0.0.0',
     port: 3000,
-    strictPort: true,
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

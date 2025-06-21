@@ -5,13 +5,15 @@ const {
   getEvents,
   getEvent,
   updateEvent,
-  deleteEvent
+  deleteEvent,
+  searchEvents
 } = require('../controllers/eventController');
 const auth = require('../middleware/auth');
 
 router.use(auth);
 
 router.post('/', createEvent);
+router.get('/search', searchEvents);
 router.get('/', getEvents);
 router.get('/:id', getEvent);
 router.put('/:id', updateEvent);

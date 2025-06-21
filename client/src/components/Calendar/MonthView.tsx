@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon } from 'lucide-react';
-import { Event, CalendarDate } from '@/types';
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Users } from 'lucide-react';
+import { Event } from '@/types';
 import { formatDate, getMonthCalendarDates, navigateDate, getDateRangeText, getWeekdays } from '@/utils/date';
 import { getColorConfig } from '@/utils/colors';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -220,6 +220,8 @@ const MonthView: React.FC<MonthViewProps> = ({
                     <div className="space-y-1">
                       {dateEvents.slice(0, 3).map((event) => {
                         const colorConfig = getColorConfig(event.color);
+                        const isGroupEvent = event.group && event.privacy === 'group_only';
+                        
                         return (
                           <motion.div
                             key={event._id}
@@ -234,12 +236,16 @@ const MonthView: React.FC<MonthViewProps> = ({
                               px-2 py-1 text-xs rounded cursor-pointer 
                               ${colorConfig.bg}
                               hover:shadow-sm transition-all
-                              truncate
+                              truncate flex items-center space-x-1
+                              ${isGroupEvent ? 'border-l-2 border-morandi-sage' : ''}
                             `}
                             style={{ color: '#1f2937' }}
-                            title={event.title}
+                            title={isGroupEvent ? `[團體] ${event.title}` : event.title}
                           >
-                            {event.title}
+                            {isGroupEvent && (
+                              <Users className="w-3 h-3 text-morandi-sage flex-shrink-0" />
+                            )}
+                            <span className="truncate">{event.title}</span>
                           </motion.div>
                         );
                       })}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Repeat, Calendar, Hash, Clock } from 'lucide-react';
+import { Repeat, Calendar, Clock } from 'lucide-react';
 
 export interface RecurrenceRule {
   type: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';

@@ -6,6 +6,9 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import AuthPage from '@/pages/AuthPage';
 import CalendarPage from '@/pages/CalendarPage';
+import GroupsPage from '@/pages/GroupsPage';
+import NotificationsPage from '@/pages/NotificationsPage';
+import InvitationsPage from '@/pages/InvitationsPage';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -69,6 +72,30 @@ const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute>
               <CalendarPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/groups" 
+          element={
+            <ProtectedRoute>
+              <GroupsPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/notifications" 
+          element={
+            <ProtectedRoute>
+              <NotificationsPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/invitations" 
+          element={
+            <ProtectedRoute>
+              <InvitationsPage />
             </ProtectedRoute>
           } 
         />

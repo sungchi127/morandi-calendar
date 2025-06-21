@@ -25,7 +25,13 @@ const baseEventSchema = {
   ).default('morandi-sage'),
   category: Joi.string().valid('work', 'personal', 'friends', 'family', 'health', 'other').default('personal'),
   location: Joi.string().max(200).allow(''),
-  privacy: Joi.string().valid('private', 'shared', 'public').default('private'),
+  privacy: Joi.string().valid('private', 'shared', 'public', 'group_only').default('private'),
+  // 團體相關欄位
+  group: Joi.string().hex().length(24).allow(null).optional(),
+  groupEventType: Joi.string().valid('meeting', 'deadline', 'social', 'project', 'other').default('other'),
+  requiresAttendance: Joi.boolean().default(false),
+  maxAttendees: Joi.number().integer().min(1).allow(null).optional(),
+  status: Joi.string().valid('draft', 'published', 'cancelled', 'completed').default('published'),
   reminders: Joi.array().items(
     Joi.string().valid('5min', '15min', '30min', '1hour', '1day', '1week')
   ).default([])
@@ -64,7 +70,13 @@ const updateEventSchema = Joi.object({
   ),
   category: Joi.string().valid('work', 'personal', 'friends', 'family', 'health', 'other'),
   location: Joi.string().max(200).allow(''),
-  privacy: Joi.string().valid('private', 'shared', 'public'),
+  privacy: Joi.string().valid('private', 'shared', 'public', 'group_only'),
+  // 團體相關欄位
+  group: Joi.string().hex().length(24).allow(null),
+  groupEventType: Joi.string().valid('meeting', 'deadline', 'social', 'project', 'other'),
+  requiresAttendance: Joi.boolean(),
+  maxAttendees: Joi.number().integer().min(1).allow(null),
+  status: Joi.string().valid('draft', 'published', 'cancelled', 'completed'),
   reminders: Joi.array().items(
     Joi.string().valid('5min', '15min', '30min', '1hour', '1day', '1week')
   ),
@@ -100,6 +112,9 @@ const createEvent = async (req, res) => {
 
     await event.save();
     await event.populate('creator', 'displayName email avatar');
+    if (event.group) {
+      await event.populate('group', 'name avatar');
+    }
 
     res.status(201).json({
       success: true,
@@ -117,22 +132,82 @@ const createEvent = async (req, res) => {
 
 const getEvents = async (req, res) => {
   try {
-    const { year, month, startDate, endDate } = req.query;
-    let query = {
-      $or: [
-        { creator: req.user._id },
-        { 'sharedWith.user': req.user._id }
-      ]
-    };
+    const { 
+      year, 
+      month, 
+      startDate, 
+      endDate, 
+      search, 
+      category, 
+      color, 
+      searchStartDate, 
+      searchEndDate,
+      limit = 100,
+      page = 1
+    } = req.query;
+    
+    // 使用 Event 模型的 getUserVisibleEvents 方法來獲取用戶可見的所有活動（包括團體活動）
+    let dateRange = {};
+    
+    if (searchStartDate && searchEndDate) {
+      dateRange.startDate = searchStartDate;
+      dateRange.endDate = searchEndDate;
+    } else if (year && month) {
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+      dateRange.startDate = startOfMonth(date);
+      dateRange.endDate = endOfMonth(date);
+    } else if (startDate && endDate) {
+      dateRange.startDate = startDate;
+      dateRange.endDate = endDate;
+    }
+
+    // 搜尋條件
+    const searchConditions = [];
+    
+    // 文字搜尋（標題和描述）
+    if (search && search.trim()) {
+      searchConditions.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
+    }
+    
+    // 分類篩選
+    if (category && category !== 'all') {
+      searchConditions.push({ category });
+    }
+    
+    // 顏色篩選
+    if (color && color !== 'all') {
+      searchConditions.push({ color });
+    }
 
     let rangeStart, rangeEnd;
 
-    if (year && month) {
+    // 日期範圍處理
+    if (searchStartDate && searchEndDate) {
+      // 搜尋專用的日期範圍
+      rangeStart = new Date(searchStartDate);
+      rangeEnd = new Date(searchEndDate);
+      searchConditions.push({
+        $or: [
+          { startDate: { $gte: rangeStart, $lte: rangeEnd } },
+          { endDate: { $gte: rangeStart, $lte: rangeEnd } },
+          { 
+            startDate: { $lte: rangeStart },
+            endDate: { $gte: rangeEnd }
+          }
+        ]
+      });
+    } else if (year && month) {
+      // 月視圖的日期範圍
       const date = new Date(parseInt(year), parseInt(month) - 1, 1);
       rangeStart = startOfMonth(date);
       rangeEnd = endOfMonth(date);
       
-      query.$and = [{
+      searchConditions.push({
         $or: [
           { startDate: { $gte: rangeStart, $lte: rangeEnd } },
           { endDate: { $gte: rangeStart, $lte: rangeEnd } },
@@ -141,12 +216,13 @@ const getEvents = async (req, res) => {
             endDate: { $gte: rangeEnd }
           }
         ]
-      }];
+      });
     } else if (startDate && endDate) {
+      // 自定義日期範圍
       rangeStart = new Date(startDate);
       rangeEnd = new Date(endDate);
       
-      query.$and = [{
+      searchConditions.push({
         $or: [
           { startDate: { $gte: rangeStart, $lte: rangeEnd } },
           { endDate: { $gte: rangeStart, $lte: rangeEnd } },
@@ -155,50 +231,68 @@ const getEvents = async (req, res) => {
             endDate: { $gte: rangeEnd }
           }
         ]
-      }];
+      });
     }
 
-    // 獲取基礎活動
-    const baseEvents = await Event.find(query)
-      .populate('creator', 'displayName email avatar')
-      .populate('sharedWith.user', 'displayName email avatar')
-      .sort({ startDate: 1 });
+    // 使用 Event 模型的 getUserVisibleEvents 方法獲取用戶可見的活動（包括團體活動）
+    const events = await Event.getUserVisibleEvents(req.user._id, {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    });
+
+    // 手動應用額外的篩選條件（搜尋、分類、顏色）
+    let filteredEvents = events;
+    
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toLowerCase();
+      filteredEvents = filteredEvents.filter(event => 
+        event.title.toLowerCase().includes(searchTerm) ||
+        (event.description && event.description.toLowerCase().includes(searchTerm))
+      );
+    }
+    
+    if (category && category !== 'all') {
+      filteredEvents = filteredEvents.filter(event => event.category === category);
+    }
+    
+    if (color && color !== 'all') {
+      filteredEvents = filteredEvents.filter(event => event.color === color);
+    }
+
+    // 計算總數
+    const totalCount = filteredEvents.length;
+    const baseEvents = filteredEvents;
 
     // 如果有日期範圍，生成重複活動
     let allEvents = [...baseEvents];
     
-    if (rangeStart && rangeEnd) {
-      // 找出有重複設定的活動（包括範圍外的活動）
-      const recurringQuery = {
-        $or: [
-          { creator: req.user._id },
-          { 'sharedWith.user': req.user._id }
-        ],
-        'recurrence.type': { $ne: 'none' }
-      };
-
-      const recurringEvents = await Event.find(recurringQuery)
-        .populate('creator', 'displayName email avatar')
-        .populate('sharedWith.user', 'displayName email avatar');
-
-      // 為每個重複活動生成重複實例
-      for (const recurringEvent of recurringEvents) {
-        const recurrenceOccurrences = generateRecurrenceOccurrences(
-          recurringEvent.toObject(),
-          recurringEvent.recurrence,
-          rangeStart,
-          rangeEnd
-        );
-        allEvents.push(...recurrenceOccurrences);
-      }
-    }
+    // 重複活動處理已經在 getUserVisibleEvents 中處理了，這裡不需要重複處理
 
     // 按開始時間排序
     allEvents.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
     res.json({
       success: true,
-      data: { events: allEvents }
+      data: { 
+        events: allEvents,
+        pagination: {
+          total: totalCount,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(totalCount / parseInt(limit))
+        },
+        filters: {
+          search: search || null,
+          category: category || null,
+          color: color || null,
+          dateRange: searchStartDate && searchEndDate ? {
+            start: searchStartDate,
+            end: searchEndDate
+          } : null
+        }
+      }
     });
   } catch (error) {
     console.error('Get events error:', error);
@@ -312,10 +406,118 @@ const deleteEvent = async (req, res) => {
   }
 };
 
+// 專門的搜尋API
+const searchEvents = async (req, res) => {
+  try {
+    const { 
+      q: search, 
+      category, 
+      color, 
+      startDate, 
+      endDate,
+      limit = 50,
+      page = 1,
+      sortBy = 'startDate',
+      sortOrder = 'asc'
+    } = req.query;
+
+    let query = {
+      $or: [
+        { creator: req.user._id },
+        { 'sharedWith.user': req.user._id }
+      ]
+    };
+
+    const searchConditions = [];
+    
+    // 文字搜尋
+    if (search && search.trim()) {
+      searchConditions.push({
+        $or: [
+          { title: { $regex: search.trim(), $options: 'i' } },
+          { description: { $regex: search.trim(), $options: 'i' } },
+          { location: { $regex: search.trim(), $options: 'i' } }
+        ]
+      });
+    }
+    
+    // 篩選條件
+    if (category && category !== 'all') {
+      searchConditions.push({ category });
+    }
+    
+    if (color && color !== 'all') {
+      searchConditions.push({ color });
+    }
+    
+    // 日期範圍
+    if (startDate && endDate) {
+      const rangeStart = new Date(startDate);
+      const rangeEnd = new Date(endDate);
+      searchConditions.push({
+        $or: [
+          { startDate: { $gte: rangeStart, $lte: rangeEnd } },
+          { endDate: { $gte: rangeStart, $lte: rangeEnd } },
+          { 
+            startDate: { $lte: rangeStart },
+            endDate: { $gte: rangeEnd }
+          }
+        ]
+      });
+    }
+
+    if (searchConditions.length > 0) {
+      query.$and = searchConditions;
+    }
+
+    // 排序設定
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const totalCount = await Event.countDocuments(query);
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const events = await Event.find(query)
+      .populate('creator', 'displayName email avatar')
+      .populate('sharedWith.user', 'displayName email avatar')
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.json({
+      success: true,
+      data: {
+        events,
+        pagination: {
+          total: totalCount,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(totalCount / parseInt(limit))
+        },
+        query: {
+          search: search || null,
+          category: category || null,
+          color: color || null,
+          dateRange: startDate && endDate ? { start: startDate, end: endDate } : null,
+          sortBy,
+          sortOrder
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Search events error:', error);
+    res.status(500).json({
+      success: false,
+      message: '搜尋活動時發生錯誤'
+    });
+  }
+};
+
 module.exports = {
   createEvent,
   getEvents,
   getEvent,
   updateEvent,
-  deleteEvent
+  deleteEvent,
+  searchEvents
 };

@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { X, Calendar, Clock, MapPin, Palette } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, Palette, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Event, CreateEventForm, MorandiColor } from '@/types';
 import { getColorConfig, getColorOptions } from '@/utils/colors';
 import { separateDateTime, formatDateForInput } from '@/utils/date';
+import { groupAPI } from '@/services/api';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const eventSchema = yup.object({
   title: yup
@@ -40,7 +43,8 @@ const eventSchema = yup.object({
   color: yup.string().required(),
   category: yup.string().required(),
   location: yup.string().max(200, '地點不能超過200個字符'),
-  privacy: yup.string().oneOf(['private', 'shared', 'public']).default('private'),
+  privacy: yup.string().oneOf(['private', 'shared', 'public', 'group_only']).default('private'),
+  group: yup.string().optional(),
 });
 
 interface EventEditModalProps {
@@ -56,8 +60,18 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
   onClose,
   onSubmit
 }) => {
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const colorOptions = getColorOptions();
+
+  // 獲取用戶的團體列表
+  const { data: userGroupsData } = useQuery({
+    queryKey: ['user-groups'],
+    queryFn: () => groupAPI.getUserGroups({ limit: 50 }),
+    enabled: !!user,
+  });
+
+  const userGroups = userGroupsData?.data.groups || [];
 
   const {
     register,
@@ -67,7 +81,7 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
     setValue,
     formState: { errors },
   } = useForm<CreateEventForm>({
-    resolver: yupResolver(eventSchema),
+    resolver: yupResolver(eventSchema) as any,
   });
 
   // 當 event 改變時，更新表單默認值
@@ -90,6 +104,7 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
         category: event.category,
         location: event.location || '',
         privacy: event.privacy,
+        group: event.group?._id || '', // 添加 group 欄位
         reminders: [],
       });
     }
@@ -97,6 +112,17 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
 
   const isAllDay = watch('isAllDay');
   const selectedColor = watch('color') as MorandiColor;
+  const selectedGroup = watch('group');
+  const selectedPrivacy = watch('privacy');
+
+  // 當選擇團體時，自動設置隱私為 group_only
+  useEffect(() => {
+    if (selectedGroup && selectedPrivacy !== 'group_only') {
+      setValue('privacy', 'group_only');
+    } else if (!selectedGroup && selectedPrivacy === 'group_only') {
+      setValue('privacy', 'private');
+    }
+  }, [selectedGroup, selectedPrivacy, setValue]);
 
   const handleFormSubmit = async (data: CreateEventForm) => {
     if (!event) return;
@@ -116,6 +142,7 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
         location: data.location,
         privacy: data.privacy,
         reminders: data.reminders || [],
+        ...(data.group && { group: data.group }), // 只在有團體時添加 group 欄位
       };
       
       console.log('EventEditModal - 過濾後的數據:', filteredData);
@@ -168,7 +195,7 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit(handleFormSubmit)} className="p-6 space-y-6">
+          <form onSubmit={handleSubmit(handleFormSubmit as any)} className="p-6 space-y-6">
             {/* Title */}
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
@@ -349,6 +376,29 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
               </select>
             </div>
 
+            {/* Group Selection */}
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                <Users className="inline w-4 h-4 mr-1" />
+                團體 (可選)
+              </label>
+              <select
+                {...register('group')}
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-morandi-sage focus:border-morandi-sage"
+                disabled={isSubmitting}
+              >
+                <option value="">個人活動</option>
+                {userGroups.map((group) => (
+                  <option key={group._id} value={group._id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-text-muted">
+                選擇團體後，活動將僅對團體成員可見
+              </p>
+            </div>
+
             {/* Location */}
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
@@ -377,10 +427,25 @@ const EventEditModal: React.FC<EventEditModalProps> = ({
                 className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-morandi-sage focus:border-morandi-sage"
                 disabled={isSubmitting}
               >
-                <option value="private">私人</option>
-                <option value="shared">共享</option>
-                <option value="public">公開</option>
+                {selectedGroup ? (
+                  <>
+                    <option value="group_only">團體成員可見</option>
+                    <option value="public">公開</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="private">私人</option>
+                    <option value="shared">共享</option>
+                    <option value="public">公開</option>
+                  </>
+                )}
               </select>
+              <p className="mt-1 text-xs text-text-muted">
+                {selectedGroup 
+                  ? '團體活動的隱私設定已自動調整' 
+                  : '選擇活動的可見性範圍'
+                }
+              </p>
             </div>
 
             {/* Actions */}

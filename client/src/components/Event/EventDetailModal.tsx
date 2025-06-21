@@ -3,7 +3,7 @@ import { X, Edit3, Trash2, Calendar, Clock, MapPin, User, Palette, MessageCircle
 import { motion, AnimatePresence } from 'framer-motion';
 import { Event } from '@/types';
 import { getColorConfig } from '@/utils/colors';
-import { formatDateTime, formatDate, formatTime, isAllDayEvent } from '@/utils/date';
+import { formatDateTime, formatDate, isAllDayEvent } from '@/utils/date';
 import CommentsList from '@/components/Comment/CommentsList';
 
 interface EventDetailModalProps {

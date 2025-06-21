@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthResponse } from '@/types';
+import { User } from '@/types';
 import { authAPI } from '@/services/api';
 import toast from 'react-hot-toast';
 

@@ -8,6 +8,9 @@ const connectDB = require('./config/database');
 const authRoutes = require('./routes/auth');
 const eventRoutes = require('./routes/events');
 const commentRoutes = require('./routes/comments');
+const groupRoutes = require('./routes/groups');
+const invitationRoutes = require('./routes/invitations');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -37,6 +40,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/groups', groupRoutes);
+app.use('/api/invitations', invitationRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 在開發環境中提供一個簡單的前端頁面
 app.get('/', (req, res) => {
@@ -68,6 +74,9 @@ app.get('/', (req, res) => {
           <p><strong>用戶註冊:</strong> POST /api/auth/register</p>
           <p><strong>用戶登入:</strong> POST /api/auth/login</p>
           <p><strong>獲取行程:</strong> GET /api/events</p>
+          <p><strong>團體管理:</strong> GET /api/groups</p>
+          <p><strong>邀請管理:</strong> GET /api/invitations</p>
+          <p><strong>通知系統:</strong> GET /api/notifications</p>
         </div>
         
         <div class="info">

@@ -7,7 +7,7 @@ import {
   eachDayOfInterval, 
   isSameMonth, 
   isToday, 
-  isSameDay,
+  isSameDay as dateFnsIsSameDay,
   addMonths,
   subMonths,
   addWeeks,
@@ -41,15 +41,15 @@ export const formatRelativeDate = (date: Date | string) => {
   const dateObj = typeof date === 'string' ? parseISO(date) : date;
   const now = new Date();
   
-  if (isSameDay(dateObj, now)) {
+  if (dateFnsIsSameDay(dateObj, now)) {
     return '今天';
   }
   
-  if (isSameDay(dateObj, addDays(now, 1))) {
+  if (dateFnsIsSameDay(dateObj, addDays(now, 1))) {
     return '明天';
   }
   
-  if (isSameDay(dateObj, subDays(now, 1))) {
+  if (dateFnsIsSameDay(dateObj, subDays(now, 1))) {
     return '昨天';
   }
   
@@ -89,7 +89,7 @@ export const getWeekCalendarDates = (currentDate: Date): CalendarDate[] => {
     date,
     isCurrentMonth: true,
     isToday: isToday(date),
-    isSelected: isSameDay(date, currentDate),
+    isSelected: dateFnsIsSameDay(date, currentDate),
     events: [],
   }));
 };
@@ -135,6 +135,20 @@ export const isDateInRange = (date: Date, start: Date, end: Date) => {
   const dateTime = date.getTime();
   return dateTime >= start.getTime() && dateTime <= end.getTime();
 };
+
+export const getWeekDateRange = (date: Date): Date[] => {
+  const startOfWeekDate = startOfWeek(date, { weekStartsOn: 0 }); // 週日開始
+  return Array.from({ length: 7 }, (_, i) => addDays(startOfWeekDate, i));
+};
+
+export const isSameDay = (date1: Date | string, date2: Date | string): boolean => {
+  const d1 = typeof date1 === 'string' ? new Date(date1) : date1;
+  const d2 = typeof date2 === 'string' ? new Date(date2) : date2;
+  return formatDate(d1, 'yyyy-MM-dd') === formatDate(d2, 'yyyy-MM-dd');
+};
+
+// 重新導出 isToday 函數
+export { isToday };
 
 export const getEventDuration = (startDate: Date | string, endDate: Date | string) => {
   const start = typeof startDate === 'string' ? parseISO(startDate) : startDate;

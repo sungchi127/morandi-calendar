@@ -1,6 +1,17 @@
 // Debug API calls
 import { eventAPI, authAPI } from '@/services/api';
 
+// 擴展 Window 接口
+declare global {
+  interface Window {
+    debugAPI: {
+      testAuth(): Promise<void>;
+      testEvents(): Promise<void>;
+      testCreateEvent(): Promise<void>;
+    };
+  }
+}
+
 window.debugAPI = {
   async testAuth() {
     try {

@@ -1,36 +1,84 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Settings, LogOut, User, Plus } from 'lucide-react';
+import { Calendar, Settings, LogOut, User, Plus, Search, Users, Mail } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { eventAPI } from '@/services/api';
+import { eventAPI, notificationAPI } from '@/services/api';
 import MonthView from '@/components/Calendar/MonthView';
+import WeekView from '@/components/Calendar/WeekView';
+import DayView from '@/components/Calendar/DayView';
+import ViewSwitcher, { CalendarViewType } from '@/components/Calendar/ViewSwitcher';
 import EventModal from '@/components/Event/EventModal';
 import EventDetailModal from '@/components/Event/EventDetailModal';
 import EventEditModal from '@/components/Event/EventEditModal';
+import SearchPage from '@/pages/SearchPage';
+import NotificationBadge from '@/components/Notification/NotificationBadge';
+import NotificationDropdown from '@/components/Notification/NotificationDropdown';
 import { Event, CreateEventForm } from '@/types';
 import { combineDateTime, formatDateForInput } from '@/utils/date';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 const CalendarPage: React.FC = () => {
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isEventDetailModalOpen, setIsEventDetailModalOpen] = useState(false);
   const [isEventEditModalOpen, setIsEventEditModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showSearchPage, setShowSearchPage] = useState(false);
+  const [currentView, setCurrentView] = useState<CalendarViewType>('month');
+  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
 
   const { data: eventsData, isLoading, error } = useQuery({
-    queryKey: ['events', currentDate.getFullYear(), currentDate.getMonth() + 1],
-    queryFn: () => eventAPI.getEvents({
-      year: currentDate.getFullYear(),
-      month: currentDate.getMonth() + 1,
-    }),
+    queryKey: ['events', currentDate.getFullYear(), currentDate.getMonth() + 1, currentView],
+    queryFn: () => {
+      if (currentView === 'month') {
+        return eventAPI.getEvents({
+          year: currentDate.getFullYear(),
+          month: currentDate.getMonth() + 1,
+        });
+      } else {
+        // 週視圖和日視圖需要更大的日期範圍
+        const startDate = new Date(currentDate);
+        const endDate = new Date(currentDate);
+        
+        if (currentView === 'week') {
+          startDate.setDate(startDate.getDate() - startDate.getDay()); // 本週開始
+          endDate.setDate(startDate.getDate() + 6); // 本週結束
+        } else {
+          // 日視圖只看當天
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(23, 59, 59, 999);
+        }
+        
+        return eventAPI.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+        });
+      }
+    },
     enabled: !!user,
   });
 
   const events = eventsData?.data.events || [];
+
+  // 獲取未讀通知數量
+  const { data: unreadCountData } = useQuery({
+    queryKey: ['notifications-unread-count'],
+    queryFn: notificationAPI.getUnreadCount,
+    enabled: !!user,
+    refetchInterval: 30000, // 每30秒刷新一次
+  });
+
+  // 獲取最新通知（用於下拉列表）
+  const { data: recentNotificationsData } = useQuery({
+    queryKey: ['recent-notifications'],
+    queryFn: () => notificationAPI.getUserNotifications({ limit: 5 }),
+    enabled: !!user && isNotificationDropdownOpen,
+  });
 
   // 創建活動的 mutation
   const createEventMutation = useMutation({
@@ -66,6 +114,41 @@ const CalendarPage: React.FC = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || '刪除活動失敗');
+    },
+  });
+
+  // 通知相關 mutations
+  const markAsReadMutation = useMutation({
+    mutationFn: notificationAPI.markAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-notifications'] });
+    },
+  });
+
+  const archiveNotificationMutation = useMutation({
+    mutationFn: notificationAPI.archiveNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recent-notifications'] });
+      toast.success('通知已歸檔');
+    },
+  });
+
+  const deleteNotificationMutation = useMutation({
+    mutationFn: notificationAPI.deleteNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-notifications'] });
+      toast.success('通知已刪除');
+    },
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: notificationAPI.markAllAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-notifications'] });
+      toast.success('所有通知已標記為已讀');
     },
   });
 
@@ -123,6 +206,7 @@ const CalendarPage: React.FC = () => {
         privacy: formData.privacy,
         reminders: formData.reminders || [],
         recurrence: recurrenceData,
+        ...(formData.group && { group: formData.group }), // 只在有團體時添加 group 欄位
       };
 
       console.log('Creating event with recurrence:', eventData);
@@ -150,6 +234,7 @@ const CalendarPage: React.FC = () => {
         location: formData.location,
         privacy: formData.privacy,
         reminders: formData.reminders || [],
+        ...(formData.group && { group: formData.group }), // 只在有團體時添加 group 欄位
       };
       
       if (formData.startDate) {
@@ -197,8 +282,22 @@ const CalendarPage: React.FC = () => {
     return result;
   };
 
+  const unreadCount = unreadCountData?.data.count || 0;
+  const recentNotifications = recentNotificationsData?.data.notifications || [];
+
   if (error) {
     toast.error('載入活動失敗');
+  }
+
+  if (showSearchPage) {
+    return (
+      <SearchPage
+        onBack={() => setShowSearchPage(false)}
+        onEventEdit={handleEventEdit}
+        onEventDelete={handleEventDelete}
+        isOwner={isOwner}
+      />
+    );
   }
 
   return (
@@ -216,6 +315,35 @@ const CalendarPage: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
+            <ViewSwitcher 
+              currentView={currentView} 
+              onViewChange={setCurrentView} 
+            />
+            
+            <button
+              onClick={() => setShowSearchPage(true)}
+              className="flex items-center space-x-2 px-4 py-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-alt rounded-lg transition-colors"
+            >
+              <Search className="w-4 h-4" />
+              <span className="text-sm font-medium">搜尋</span>
+            </button>
+            
+            <button
+              onClick={() => navigate('/groups')}
+              className="flex items-center space-x-2 px-4 py-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-alt rounded-lg transition-colors"
+            >
+              <Users className="w-4 h-4" />
+              <span className="text-sm font-medium">團體</span>
+            </button>
+            
+            <button
+              onClick={() => navigate('/invitations')}
+              className="flex items-center space-x-2 px-4 py-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-alt rounded-lg transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              <span className="text-sm font-medium">邀請</span>
+            </button>
+            
             <button
               onClick={() => {
                 setSelectedDate(null);
@@ -226,6 +354,26 @@ const CalendarPage: React.FC = () => {
               <Plus className="w-4 h-4" />
               <span className="text-sm font-medium">新增活動</span>
             </button>
+
+            {/* 通知 */}
+            <div className="relative">
+              <NotificationBadge
+                count={unreadCount}
+                onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+              />
+              <NotificationDropdown
+                isOpen={isNotificationDropdownOpen}
+                onClose={() => setIsNotificationDropdownOpen(false)}
+                notifications={recentNotifications}
+                unreadCount={unreadCount}
+                onMarkAsRead={(id) => markAsReadMutation.mutate(id)}
+                onArchive={(id) => archiveNotificationMutation.mutate(id)}
+                onDelete={(id) => deleteNotificationMutation.mutate(id)}
+                onMarkAllAsRead={() => markAllAsReadMutation.mutate([])}
+                onViewAll={() => navigate('/notifications')}
+                onSettings={() => navigate('/notifications')}
+              />
+            </div>
             
             <div className="flex items-center space-x-2 text-text-secondary">
               <User className="w-4 h-4" />
@@ -261,14 +409,38 @@ const CalendarPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <MonthView
-            currentDate={currentDate}
-            events={events}
-            onDateSelect={handleDateSelect}
-            onEventClick={handleEventClick}
-            onEventCreate={handleEventCreate}
-            onNavigate={handleNavigate}
-          />
+          <>
+            {currentView === 'month' && (
+              <MonthView
+                currentDate={currentDate}
+                events={events}
+                onDateSelect={handleDateSelect}
+                onEventClick={handleEventClick}
+                onEventCreate={handleEventCreate}
+                onNavigate={handleNavigate}
+              />
+            )}
+            {currentView === 'week' && (
+              <WeekView
+                currentDate={currentDate}
+                events={events}
+                onDateSelect={handleDateSelect}
+                onEventClick={handleEventClick}
+                onEventCreate={handleEventCreate}
+                onNavigate={handleNavigate}
+              />
+            )}
+            {currentView === 'day' && (
+              <DayView
+                currentDate={currentDate}
+                events={events}
+                onDateSelect={handleDateSelect}
+                onEventClick={handleEventClick}
+                onEventCreate={handleEventCreate}
+                onNavigate={handleNavigate}
+              />
+            )}
+          </>
         )}
       </main>
 

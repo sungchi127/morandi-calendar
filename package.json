@@ -9,10 +9,18 @@
     "build": "cd client && npm run build",
     "install-deps": "cd server && npm install && cd ../client && npm install"
   },
-  "keywords": ["calendar", "react", "nodejs", "morandi"],
+  "keywords": [
+    "calendar",
+    "react",
+    "nodejs",
+    "morandi"
+  ],
   "author": "Your Name",
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-puppeteer": "^2025.5.12"
   }
 }
