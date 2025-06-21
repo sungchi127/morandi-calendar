@@ -1,9 +1,8 @@
 # 🎨 Morandi Calendar | 莫蘭迪日曆
 
 一個優雅的莫蘭迪色系日曆應用，具備完整的活動管理和社交功能。
-![image](https://github.com/user-attachments/assets/c4595e6f-796e-40a3-9126-b5afe06bc021)
-
-![image](https://github.com/user-attachments/assets/732d0992-19b6-4a20-9c1c-d923c4ec36e6)
+![image](https://github.com/user-attachments/assets/d44f9e12-34f1-4e13-bdff-a2cb67c739df)
+![image](https://github.com/user-attachments/assets/f5178168-31e3-4c99-8900-7c2c4a925939)
 
 ## ✨ 功能特點
 
